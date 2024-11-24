@@ -5,118 +5,152 @@ import cp2024.demo.BrokenCircuitValue;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.List;
+import java.util.ArrayList;
 
 public class ParallelCircuitSolver implements CircuitSolver {
-    private final ExecutorService executor = Executors.newCachedThreadPool();
     private volatile boolean acceptingComputations = true;
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
     public CircuitValue solve(Circuit c) {
         if (!acceptingComputations) {
             return new BrokenCircuitValue();
         }
-        AtomicBoolean terminated = new AtomicBoolean(false); // Tworzymy kontekst dla tego układu
-        return new ParallelCircuitValue(executor.submit(() -> solveNode(c.getRoot(), terminated, executor)));
+        AtomicBoolean terminated = new AtomicBoolean(false);
+        Callable<Boolean> task = () -> {
+            try {
+                return solveNode(c.getRoot(), terminated);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        };
+        Future<Boolean> future = executor.submit(task);  // Używamy już współdzielonego ExecutorService
+        return new ParallelCircuitValue(future);
     }
 
     @Override
     public void stop() {
         acceptingComputations = false;
-        executor.shutdownNow(); // Zatrzymujemy wszystkie zadania w globalnym executorze
+        executor.shutdownNow();
     }
 
-    private boolean solveNode(CircuitNode node, AtomicBoolean terminated , ExecutorService executor) throws InterruptedException {
+    private boolean solveNode(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
         if (terminated.get()) {
             throw new InterruptedException("Calculation terminated for this circuit.");
         }
+
         if (node.getType() == NodeType.IF) {
-            return solveNode(node.getArgs()[0], terminated, executor)
-                    ? solveNode(node.getArgs()[1], terminated, executor)
-                    : solveNode(node.getArgs()[2], terminated, executor);
+            return solveNode(node.getArgs()[0], terminated)
+                    ? solveNode(node.getArgs()[1], terminated)
+                    : solveNode(node.getArgs()[2], terminated);
         }
+
         return switch (node.getType()) {
             case LEAF -> ((LeafNode) node).getValue();
-            case AND -> solveAND(node, terminated, executor);
-            case OR -> solveOR(node, terminated, executor);
-            case NOT -> !solveNode(node.getArgs()[0], terminated, executor);
-            case GT -> solveThreshold(node, terminated, executor, true);
-            case LT -> solveThreshold(node, terminated, executor, false);
+            case AND -> solveAND(node, terminated);
+            case OR -> solveOR(node, terminated);
+            case NOT -> !solveNode(node.getArgs()[0], terminated);
+            case GT -> solveThreshold(node, terminated, true);
+            case LT -> solveThreshold(node, terminated, false);
             default -> throw new RuntimeException("Illegal type: " + node.getType());
         };
     }
 
-    private boolean solveAND(CircuitNode node, AtomicBoolean terminated, ExecutorService executor) throws InterruptedException {
+    private boolean solveAND(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
-        BlockingQueue<Future<Boolean>> resultsQueue = submitAll(args, terminated, executor);
-
-        for (int i = 0; i < args.length; i++) {
-            try {
-                if (!resultsQueue.take().get()) { // Pobieramy wynik w kolejności zakończenia
-                    terminated.set(true); // Jeśli znajdziemy `false`, przerywamy inne obliczenia
-                    cancelRemaining(resultsQueue); // Anulujemy pozostałe obliczenia
-                    return false;
+        List<Thread> threads = new ArrayList<>();
+        BlockingQueue<Boolean> resultsQueue = new LinkedBlockingQueue<>();
+        for (CircuitNode arg : args) {
+            Thread thread = new Thread(() -> {
+                try {
+                    resultsQueue.add(solveNode(arg, terminated));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
-            } catch (ExecutionException e) {
-                throw new RuntimeException(e.getCause());
+            });
+            threads.add(thread);
+            thread.start();
+        }
+        for (int i = 0; i < args.length; i++) {
+            boolean result = resultsQueue.take();
+            if (!result) {
+                terminated.set(true);
+                interruptAll(threads);
+                return false;
             }
         }
         return true;
     }
 
-    private boolean solveOR(CircuitNode node, AtomicBoolean terminated, ExecutorService executor) throws InterruptedException {
+    private boolean solveOR(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
-        BlockingQueue<Future<Boolean>> resultsQueue = submitAll(args, terminated, executor);
-
-        for (int i = 0; i < args.length; i++) {
-            try {
-                if (resultsQueue.take().get()) { // Pobieramy wynik w kolejności zakończenia
-                    terminated.set(true); // Jeśli znajdziemy `true`, przerywamy inne obliczenia
-                    return true;
+        List<Thread> threads = new ArrayList<>();
+        BlockingQueue<Boolean> resultsQueue = new LinkedBlockingQueue<>();
+        for (CircuitNode arg : args) {
+            Thread thread = new Thread(() -> {
+                try {
+                    resultsQueue.add(solveNode(arg, terminated));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
-            } catch (ExecutionException e) {
-                throw new RuntimeException(e.getCause());
+            });
+            threads.add(thread);
+            thread.start();
+        }
+        for (int i = 0; i < args.length; i++) {
+            boolean result = resultsQueue.take();
+            if (result) {
+                terminated.set(true);
+                interruptAll(threads);
+                return true;
             }
         }
         return false;
     }
 
-    private boolean solveThreshold(CircuitNode node, AtomicBoolean terminated, ExecutorService executor, boolean isGT) throws InterruptedException {
+    private boolean solveThreshold(CircuitNode node, AtomicBoolean terminated, boolean isGT) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
         int threshold = ((ThresholdNode) node).getThreshold();
         int count = 0;
-        BlockingQueue<Future<Boolean>> resultsQueue = submitAll(args, terminated, executor);
+        List<Thread> threads = new ArrayList<>();
+        BlockingQueue<Boolean> resultsQueue = new LinkedBlockingQueue<>();
+
+        for (CircuitNode arg : args) {
+            Thread thread = new Thread(() -> {
+                try {
+                    resultsQueue.add(solveNode(arg, terminated));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            threads.add(thread);
+            thread.start();
+        }
 
         for (int i = 0; i < args.length; i++) {
-            try {
-                if (resultsQueue.take().get()) { // Pobieramy wynik w kolejności zakończenia
-                    count++;
-                }
-                if (isGT && count > threshold) {
-                    terminated.set(true);
-                    return true;
-                } else if (!isGT && count >= threshold) {
-                    terminated.set(true);
-                    return false;
-                }
-            } catch (ExecutionException e) {
-                throw new RuntimeException(e.getCause());
+            boolean result = resultsQueue.take();
+            if (result) {
+                count++;
+            }
+            // PRZECIWN YPRZYPADEK THRESHOLD < COUNT ZE JUZ NIE MOZE BYC
+            if (isGT && count > threshold) {
+                terminated.set(true);
+                interruptAll(threads);
+                return true;
+            } else if (!isGT && count >= threshold) {
+                terminated.set(true);
+                interruptAll(threads);
+                return false;
             }
         }
         return isGT == (count > threshold);
     }
 
-    private BlockingQueue<Future<Boolean>> submitAll(CircuitNode[] args, AtomicBoolean terminated, ExecutorService executor) {
-        BlockingQueue<Future<Boolean>> resultsQueue = new LinkedBlockingQueue<>();
-        for (CircuitNode arg : args) {
-            resultsQueue.add(executor.submit(() -> solveNode(arg, terminated, executor)));
-        }
-        return resultsQueue;
-    }
-
-    private void cancelRemaining(BlockingQueue<Future<Boolean>> resultsQueue) {
-        for (Future<Boolean> future : resultsQueue) {
-            future.cancel(true); // Próba anulowania bieżących obliczeń
+    private void interruptAll(List<Thread> threads) {
+        for (Thread thread : threads) {
+            thread.interrupt();
         }
     }
 }
-

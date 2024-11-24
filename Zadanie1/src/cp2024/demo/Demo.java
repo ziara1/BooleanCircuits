@@ -34,7 +34,6 @@ public class Demo {
                         CircuitNode.mk(true),
                         CircuitNode.mk(NodeType.AND,
                                 CircuitNode.mk(NodeType.AND,
-                                        CircuitNode.mk(false),
                                         CircuitNode.mk(true, Duration.ofSeconds(80)),
                                         CircuitNode.mk(false),
                                         CircuitNode.mk(true),
