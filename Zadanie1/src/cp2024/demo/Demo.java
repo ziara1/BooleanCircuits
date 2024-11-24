@@ -29,7 +29,7 @@ public class Demo {
 
         c = new Circuit(
                 CircuitNode.mk(NodeType.AND,
-                        CircuitNode.mk(true),
+                        CircuitNode.mk(true, Duration.ofSeconds(30)),
                         CircuitNode.mk(true),
                         CircuitNode.mk(true),
                         CircuitNode.mk(NodeType.AND,

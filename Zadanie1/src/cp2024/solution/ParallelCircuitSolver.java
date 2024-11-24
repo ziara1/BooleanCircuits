@@ -112,11 +112,12 @@ public class ParallelCircuitSolver implements CircuitSolver {
 
     private boolean solveThreshold(CircuitNode node, AtomicBoolean terminated, boolean isGT) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
+        int n = args.length;
         int threshold = ((ThresholdNode) node).getThreshold();
-        int count = 0;
+        int countP = 0;
+        int countN = 0;
         List<Thread> threads = new ArrayList<>();
         BlockingQueue<Boolean> resultsQueue = new LinkedBlockingQueue<>();
-
         for (CircuitNode arg : args) {
             Thread thread = new Thread(() -> {
                 try {
@@ -131,21 +132,22 @@ public class ParallelCircuitSolver implements CircuitSolver {
 
         for (int i = 0; i < args.length; i++) {
             boolean result = resultsQueue.take();
-            if (result) {
-                count++;
-            }
+            if (result)
+                countP++;
+            else
+                countN++;
             // PRZECIWN YPRZYPADEK THRESHOLD < COUNT ZE JUZ NIE MOZE BYC
-            if (isGT && count > threshold) {
+            if (isGT && (countP > threshold || countN >= n - threshold)) {
                 terminated.set(true);
                 interruptAll(threads);
-                return true;
-            } else if (!isGT && count >= threshold) {
+                return countP > threshold;
+            } else if (!isGT && (countP >= threshold || countN > n - threshold)) {
                 terminated.set(true);
                 interruptAll(threads);
-                return false;
+                return countP < threshold;
             }
         }
-        return isGT == (count > threshold);
+        return isGT == (countP > threshold);
     }
 
     private void interruptAll(List<Thread> threads) {
