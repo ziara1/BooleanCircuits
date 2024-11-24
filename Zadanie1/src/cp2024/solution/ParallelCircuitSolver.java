@@ -44,7 +44,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
             default -> throw new RuntimeException("Illegal type: " + node.getType());
         };
     }
-    
+
     private boolean solveAND(CircuitNode node, AtomicBoolean terminated, ExecutorService executor) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
         BlockingQueue<Future<Boolean>> resultsQueue = submitAll(args, terminated, executor);
@@ -53,6 +53,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
             try {
                 if (!resultsQueue.take().get()) { // Pobieramy wynik w kolejności zakończenia
                     terminated.set(true); // Jeśli znajdziemy `false`, przerywamy inne obliczenia
+                    cancelRemaining(resultsQueue); // Anulujemy pozostałe obliczenia
                     return false;
                 }
             } catch (ExecutionException e) {
@@ -110,6 +111,12 @@ public class ParallelCircuitSolver implements CircuitSolver {
             resultsQueue.add(executor.submit(() -> solveNode(arg, terminated, executor)));
         }
         return resultsQueue;
+    }
+
+    private void cancelRemaining(BlockingQueue<Future<Boolean>> resultsQueue) {
+        for (Future<Boolean> future : resultsQueue) {
+            future.cancel(true); // Próba anulowania bieżących obliczeń
+        }
     }
 }
 

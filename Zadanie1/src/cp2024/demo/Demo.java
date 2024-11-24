@@ -16,6 +16,44 @@ public class Demo {
         c = new Circuit(CircuitNode.mk(false, Duration.ofSeconds(3)));
         CircuitValue firstValue = solver.solve(c);
 
+
+
+        c = new Circuit(
+                CircuitNode.mk(NodeType.AND,
+                        CircuitNode.mk(true, Duration.ofSeconds(3)),
+                        CircuitNode.mk(true, Duration.ofSeconds(3)),
+                        CircuitNode.mk(true, Duration.ofSeconds(3))));
+        CircuitValue secondValueee = solver.solve(c);
+
+        System.out.println("Second valuedddasd1: " + secondValueee.getValue());
+
+        c = new Circuit(
+                CircuitNode.mk(NodeType.AND,
+                        CircuitNode.mk(true),
+                        CircuitNode.mk(true),
+                        CircuitNode.mk(true),
+                        CircuitNode.mk(NodeType.AND,
+                                CircuitNode.mk(NodeType.AND,
+                                        CircuitNode.mk(false),
+                                        CircuitNode.mk(true, Duration.ofSeconds(80)),
+                                        CircuitNode.mk(false),
+                                        CircuitNode.mk(true),
+                                        CircuitNode.mk(false),
+                                        CircuitNode.mk(false, Duration.ofSeconds(3))),
+                                CircuitNode.mk(true, Duration.ofSeconds(80)),
+                                CircuitNode.mk(false),
+                                CircuitNode.mk(true),
+                                CircuitNode.mk(false),
+                                CircuitNode.mk(false, Duration.ofSeconds(3))),
+                        CircuitNode.mk(true),
+                        CircuitNode.mk(false),
+                        CircuitNode.mk(true),
+                        CircuitNode.mk(false),
+                        CircuitNode.mk(false, Duration.ofSeconds(3))));
+        CircuitValue secondValuee = solver.solve(c);
+
+        System.out.println("Second valuedddas: " + secondValuee.getValue());
+
         c = new Circuit(
                 CircuitNode.mk(NodeType.GT, 2,
                         CircuitNode.mk(true),
