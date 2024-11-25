@@ -136,7 +136,6 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 countP++;
             else
                 countN++;
-            // PRZECIWN YPRZYPADEK THRESHOLD < COUNT ZE JUZ NIE MOZE BYC
             if (isGT && (countP > threshold || countN >= n - threshold)) {
                 terminated.set(true);
                 interruptAll(threads);
