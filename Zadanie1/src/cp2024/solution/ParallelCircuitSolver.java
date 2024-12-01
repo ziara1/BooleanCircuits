@@ -7,13 +7,18 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
+
+// moze dodac sprawdzanie terminated na poczatku kazdego solvera konkretnego
+// moze terminated nowe dla kazdego poddrzewa
+// moze w ogole bez terminated bedzie dzialalo
 
 public class ParallelCircuitSolver implements CircuitSolver {
     private volatile boolean acceptingComputations = true;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
-    public CircuitValue solve(Circuit c) {
+    public synchronized CircuitValue solve(Circuit c) {
         if (!acceptingComputations) {
             return new BrokenCircuitValue();
         }
@@ -40,15 +45,10 @@ public class ParallelCircuitSolver implements CircuitSolver {
         if (terminated.get()) {
             throw new InterruptedException("Calculation terminated for this circuit.");
         }
-
-        if (node.getType() == NodeType.IF) {
-            return solveNode(node.getArgs()[0], terminated)
-                    ? solveNode(node.getArgs()[1], terminated)
-                    : solveNode(node.getArgs()[2], terminated);
-        }
-
+        terminated = new AtomicBoolean(false);
         return switch (node.getType()) {
             case LEAF -> ((LeafNode) node).getValue();
+            case IF -> solveIF(node, terminated);
             case AND -> solveAND(node, terminated);
             case OR -> solveOR(node, terminated);
             case NOT -> !solveNode(node.getArgs()[0], terminated);
@@ -57,6 +57,50 @@ public class ParallelCircuitSolver implements CircuitSolver {
             default -> throw new RuntimeException("Illegal type: " + node.getType());
         };
     }
+
+    private boolean solveIF(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
+        CircuitNode[] args = node.getArgs();
+        AtomicReference<Boolean>[] results = new AtomicReference[3];
+        List<Thread> threads = new ArrayList<>();
+        CountDownLatch firstLatch = new CountDownLatch(2);
+        CountDownLatch secondLatch = new CountDownLatch(3);
+        for (int i = 0; i < 3; i++){
+            results[i] = new AtomicReference<>();
+            int finalI = i;
+            Thread thread = new Thread(() -> {
+                try {
+                    results[finalI].set(solveNode(args[finalI], terminated));
+                    firstLatch.countDown();
+                    secondLatch.countDown();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            threads.add(thread);
+            thread.start();
+        }
+
+        firstLatch.await();
+        if (results[1].get() != null && results[2].get() != null && results[1].get() == results[2].get()) {
+            terminated.set(true); // Przerywamy inne wątki
+            threads.get(0).interrupt();
+            return results[1].get(); // Gałęzie równe - wynik gotowy
+        }
+        if (results[0].get() != null) {
+            if (results[0].get() && results[1].get() != null) {
+                terminated.set(true); // Przerywamy inne wątki
+                threads.get(2).interrupt();
+                return results[1].get(); // Warunek true, wynik gałęzi "then"
+            } else if (!results[0].get() && results[2].get() != null) {
+                terminated.set(true); // Przerywamy inne wątki
+                threads.get(1).interrupt();
+                return results[2].get(); // Warunek false, wynik gałęzi "else"
+            }
+        }
+        secondLatch.await();
+        return results[0].get() ? results[1].get() : results[2].get();
+    }
+
 
     private boolean solveAND(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
         CircuitNode[] args = node.getArgs();
