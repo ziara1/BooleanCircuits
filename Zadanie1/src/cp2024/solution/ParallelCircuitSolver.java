@@ -41,7 +41,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 Thread.currentThread().interrupt();
                 throw new InterruptedException("Calculation terminated for this circuit.");
             }
-            // rozwiązuje AND i OR używając solveThreshold, ponieważ
+            // Rozwiązuje AND i OR używając solveThreshold, ponieważ
             // OR = GT0, a AND = GTn-1, gdzie n to ilość argumentów
             return switch (node.getType()) {
                 case LEAF -> ((LeafNode) node).getValue();
@@ -64,30 +64,27 @@ public class ParallelCircuitSolver implements CircuitSolver {
         try {
             CircuitNode[] args = node.getArgs();
             AtomicReference<Boolean>[] results = new AtomicReference[3];
-            CountDownLatch firstLatch = new CountDownLatch(1); // kontroluje ukończenie pierwszego wyniku
-            CountDownLatch secondLatch = new CountDownLatch(2); // kontroluje ukończenie drugiego wyniku
-            CountDownLatch[] personalLatches = new CountDownLatch[3]; // kontroluje ukończenie konkretnego wyniku
+            CountDownLatch firstLatch = new CountDownLatch(1); // Kontroluje ukończenie pierwszego wyniku
+            CountDownLatch secondLatch = new CountDownLatch(2); // Kontroluje ukończenie drugiego wyniku
+            CountDownLatch[] personalLatches = new CountDownLatch[3]; // Kontroluje ukończenie konkretnego wyniku
             for (int i = 0; i < 3; i++) {
                 results[i] = new AtomicReference<>();
                 personalLatches[i] = new CountDownLatch(1);
                 int finalI = i;
-                // uruchamia wątek do obliczenia każdego argumentu
+                // Uruchamia wątek do obliczenia każdego argumentu
                 Thread thread = new Thread(() -> {
                     try {
                         results[finalI].set(solveNode(args[finalI]));
                         personalLatches[finalI].countDown();
                         firstLatch.countDown();
                         secondLatch.countDown();
-                    } catch (InterruptedException e) {
-                        interruptAll(threads);
-                        Thread.currentThread().interrupt();
-                    }
+                    } catch (InterruptedException e) {}
                 });
                 threads.add(thread);
                 thread.start();
             }
-            firstLatch.await(); // oczekuje na pierwszy wynik
-            // jeśli pierwszy wynik to A (if A then B else C), to przerywa niepotzebny wątek
+            firstLatch.await(); // Oczekuje na pierwszy wynik
+            // Jeśli pierwszy wynik to A (if A then B else C), to przerywa niepotzebny wątek
             if (results[0].get() != null) {
                 if (results[0].get()) {
                     threads.get(2).interrupt();
@@ -100,16 +97,16 @@ public class ParallelCircuitSolver implements CircuitSolver {
                     return results[2].get();
                 }
             }
-            secondLatch.await(); // oczekuje na drugi wynik
+            secondLatch.await(); // Oczekuje na drugi wynik
             if (results[0].get() == null) {
-                if (results[1].get() == results[2].get()){ // jeśli B == C to zwracamy którykolwiek
+                if (results[1].get() == results[2].get()){ // Jeśli B == C to zwracamy którykolwiek
                     threads.get(0).interrupt();
                     return results[1].get();
                 }
-                personalLatches[0].await(); // jeśli B != C to czekamy na ukończenie A
+                personalLatches[0].await(); // Jeśli B != C to czekamy na ukończenie A
                 return results[0].get() ? results[1].get() : results[2].get();
             }
-            // jeśli drugi wynik to A (if A then B else C), to przerywa niepotzebny wątek
+            // Jeśli drugi wynik to A (if A then B else C), to przerywa niepotzebny wątek
             if (results[0].get()) {
                 threads.get(2).interrupt();
                 personalLatches[1].await();
@@ -132,17 +129,14 @@ public class ParallelCircuitSolver implements CircuitSolver {
         try {
             CircuitNode[] args = node.getArgs();
             int n = args.length;
-            int countP = 0; // liczba wyników true
-            int countN = 0; // liczba wyników false
+            int countP = 0; // Liczba wyników true
+            int countN = 0; // Liczba wyników false
             BlockingQueue<Boolean> resultsQueue = new LinkedBlockingQueue<>();
             for (CircuitNode arg : args) {
                 Thread thread = new Thread(() -> {
                     try {
                         resultsQueue.add(solveNode(arg));
-                    } catch (InterruptedException e) {
-                        interruptAll(threads);
-                        Thread.currentThread().interrupt();
-                    }
+                    } catch (InterruptedException e) {}
                 });
                 threads.add(thread);
                 thread.start();
@@ -153,7 +147,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
                     countP++;
                 else
                     countN++;
-                // jeśli wynik częściowy pozwala już określić wynik końcowy to przerywa resztę
+                // Jeśli wynik częściowy pozwala już określić wynik końcowy to przerywa resztę
                 if (isGT && (countP > threshold || countN >= n - threshold)) {
                     interruptAll(threads);
                     return countP > threshold;
@@ -171,7 +165,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
     }
 
     private void interruptAll(List<Thread> threads) {
-        // przerywa wszystkie wątki z listy
+        // Przerywa wszystkie wątki z listy
         for (Thread thread : threads) {
             thread.interrupt();
         }
