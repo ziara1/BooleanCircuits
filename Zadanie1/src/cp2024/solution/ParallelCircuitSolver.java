@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class ParallelCircuitSolver implements CircuitSolver {
     private AtomicBoolean acceptingComputations = new AtomicBoolean(true);
-    private List<Thread> threadList = new ArrayList<>();
+    private ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
     public synchronized CircuitValue solve(Circuit c) {
@@ -23,7 +23,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
             return new BrokenCircuitValue();
         }
         ParallelCircuitValue returnValue = new ParallelCircuitValue();
-        Thread thread = new Thread(() -> {
+        executor.execute(() -> {
             try {
                 returnValue.setValue(solveNode(c.getRoot(), new AtomicBoolean(false)));
             } catch (InterruptedException e) {
@@ -31,15 +31,13 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 Thread.currentThread().interrupt();
             }
         });
-        threadList.add(thread);
-        thread.start();
         return returnValue;
     }
 
     @Override
     public void stop() {
         acceptingComputations.set(false);
-        interruptAll(threadList);
+        executor.shutdownNow(); // Przerywa wszystkie aktywne zadania
     }
 
     private boolean solveNode(CircuitNode node, AtomicBoolean terminated) throws InterruptedException {
@@ -70,14 +68,17 @@ public class ParallelCircuitSolver implements CircuitSolver {
         try {
             CircuitNode[] args = node.getArgs();
             AtomicReference<Boolean>[] results = new AtomicReference[3];
-            CountDownLatch firstLatch = new CountDownLatch(2);
-            CountDownLatch secondLatch = new CountDownLatch(3);
+            CountDownLatch firstLatch = new CountDownLatch(1);
+            CountDownLatch secondLatch = new CountDownLatch(2);
+            CountDownLatch[] personalLatches = new CountDownLatch[3];
             for (int i = 0; i < 3; i++) {
                 results[i] = new AtomicReference<>();
+                personalLatches[i] = new CountDownLatch(1);
                 int finalI = i;
                 Thread thread = new Thread(() -> {
                     try {
                         results[finalI].set(solveNode(args[finalI], terminated));
+                        personalLatches[finalI].countDown();
                         firstLatch.countDown();
                         secondLatch.countDown();
                     } catch (InterruptedException e) {
@@ -88,41 +89,43 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 threads.add(thread);
                 thread.start();
             }
-            try {
-                firstLatch.await();
-            } catch (InterruptedException e) {
-                interruptAll(threads);
-                Thread.currentThread().interrupt();
-                throw new InterruptedException("Calculation terminated for this circuit.");
-            }
-            if (results[1].get() != null && results[2].get() != null && results[1].get() == results[2].get()) {
-                terminated.set(true); // Przerywamy inne wątki
-                threads.get(0).interrupt();
-                return results[1].get(); // Gałęzie równe - wynik gotowy
-            }
+            firstLatch.await();
             if (results[0].get() != null) {
-                if (results[0].get() && results[1].get() != null) {
-                    terminated.set(true); // Przerywamy inne wątki
+                if (results[0].get()) {
                     threads.get(2).interrupt();
-                    return results[1].get(); // Warunek true, wynik gałęzi "then"
-                } else if (!results[0].get() && results[2].get() != null) {
-                    terminated.set(true); // Przerywamy inne wątki
+                    personalLatches[1].await();
+                    return results[1].get();
+                }
+                else {
                     threads.get(1).interrupt();
-                    return results[2].get(); // Warunek false, wynik gałęzi "else"
+                    personalLatches[2].await();
+                    return results[2].get();
                 }
             }
-            try {
-                secondLatch.await();
-            } catch (InterruptedException e) {
-                interruptAll(threads);
-                Thread.currentThread().interrupt();
-                throw new InterruptedException("Calculation terminated for this circuit.");
+            secondLatch.await();
+            if (results[0].get() == null) {
+                if (results[1].get() == results[2].get()){
+                    threads.get(0).interrupt();
+                    return results[1].get();
+                }
+                personalLatches[0].await();
+                return results[0].get() ? results[1].get() : results[2].get();
             }
-            return results[0].get() ? results[1].get() : results[2].get();
-        } catch (InterruptedException e) {
+            if (results[0].get()) {
+                threads.get(2).interrupt();
+                personalLatches[1].await();
+                return results[1].get();
+            }
+            else {
+                threads.get(1).interrupt();
+                personalLatches[2].await();
+                return results[2].get();
+            }
+
+        } catch (InterruptedException e){
             interruptAll(threads);
             Thread.currentThread().interrupt();
-            throw new InterruptedException("Calculation terminated for this circuit.");
+            throw new InterruptedException();
         }
     }
 

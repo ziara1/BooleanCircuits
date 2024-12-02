@@ -2,7 +2,10 @@ package cp2024.solution;
 
 import cp2024.circuit.CircuitValue;
 
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ParallelCircuitValue implements CircuitValue {
     private AtomicBoolean wasSet = new AtomicBoolean(false);
@@ -38,3 +41,4 @@ public class ParallelCircuitValue implements CircuitValue {
         return value;
     }
 }
+
