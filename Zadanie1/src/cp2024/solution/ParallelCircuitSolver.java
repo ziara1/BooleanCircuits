@@ -84,7 +84,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 thread.start();
             }
             firstLatch.await(); // Oczekuje na pierwszy wynik
-            // Jeśli pierwszy wynik to A (if A then B else C), to przerywa niepotzebny wątek
+            // Jeśli pierwszy wynik to A (if A then B else C), to przerywa niepotrzebny wątek
             if (results[0].get() != null) {
                 if (results[0].get()) {
                     threads.get(2).interrupt();
@@ -106,7 +106,7 @@ public class ParallelCircuitSolver implements CircuitSolver {
                 personalLatches[0].await(); // Jeśli B != C to czekamy na ukończenie A
                 return results[0].get() ? results[1].get() : results[2].get();
             }
-            // Jeśli drugi wynik to A (if A then B else C), to przerywa niepotzebny wątek
+            // Jeśli drugi wynik to A (if A then B else C), to przerywa niepotrzebny wątek
             if (results[0].get()) {
                 threads.get(2).interrupt();
                 personalLatches[1].await();
