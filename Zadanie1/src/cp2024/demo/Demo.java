@@ -8,69 +8,20 @@ import java.time.Duration;
 public class Demo {
     public static void main(String[] args) throws InterruptedException {
         CircuitSolver solver = new ParallelCircuitSolver();
-        //CircuitSolver solver = new SequentialSolver();
-
-        Circuit c = new Circuit(CircuitNode.mk(true));
-        System.out.println("Solved: " + solver.solve(c).getValue());
-
-        c = new Circuit(CircuitNode.mk(false, Duration.ofSeconds(3)));
-        CircuitValue firstValue = solver.solve(c);
 
 
-
-        c = new Circuit(
-                CircuitNode.mk(NodeType.AND,
-                        CircuitNode.mk(true, Duration.ofSeconds(3)),
-                        CircuitNode.mk(true, Duration.ofSeconds(3)),
-                        CircuitNode.mk(true, Duration.ofSeconds(3))));
-        CircuitValue secondValueee = solver.solve(c);
-
-        System.out.println("Second valuedddas1: " + secondValueee.getValue());
-
-        c = new Circuit(
-                CircuitNode.mk(NodeType.AND,
-                        CircuitNode.mk(NodeType.OR,
-                                CircuitNode.mk(true),
-                                CircuitNode.mk(true)),
-                        CircuitNode.mk(NodeType.AND,
-                                CircuitNode.mk(true),
-                                CircuitNode.mk(NodeType.AND,
-                                        CircuitNode.mk(true),
-                                        CircuitNode.mk(true)))));
-        CircuitValue secondValuee = solver.solve(c);
-
-        System.out.println("Second valuedddasTRUE: " + secondValuee.getValue());
-
-        c = new Circuit(
-                CircuitNode.mk(NodeType.GT, 2,
-                        CircuitNode.mk(true),
-                        CircuitNode.mk(false),
-                        CircuitNode.mk(true),
-                        CircuitNode.mk(false),
-                        CircuitNode.mk(false, Duration.ofSeconds(3))));
-        CircuitValue secondValue = solver.solve(c);
-
-        System.out.println("Second value: " + secondValue.getValue());
-        System.out.println("First value: " + firstValue.getValue());
-
-        c = new Circuit(
+        Circuit c = new Circuit(
                 CircuitNode.mk(NodeType.IF,
                         CircuitNode.mk(true),
-                        CircuitNode.mk(false),
-                        CircuitNode.mk(true, Duration.ofSeconds(3))));
-        CircuitValue thirdValue = solver.solve(c);
-        System.out.println("Third value: " + thirdValue.getValue());
+                        CircuitNode.mk(true, Duration.ofSeconds(1)),
+                        CircuitNode.mk(false, Duration.ofSeconds(2))
+                )
+        );
 
-        solver.stop();
+        CircuitValue val2 = solver.solve(c);
+        System.out.println("afs");
+        System.out.println("value: " + val2.getValue());
 
-        c = new Circuit(CircuitNode.mk(true));
-        try {
-            System.out.println("Solver stopped, but solved fourth circuit: " + solver.solve(c).getValue());
-        } catch (InterruptedException e) {
-            System.out.println("Solver interrupted computation of the fourth circuit.");
-        }
-        System.out.println("Third value should be returned with no exception:");
-        System.out.println("Third value snd time: " + thirdValue.getValue());
 
         System.out.println("End of demo");
     }
